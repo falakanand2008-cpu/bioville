@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bioville</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;800&family=Nunito+Sans:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: city-builder screen. Big map on the left, a game HUD + build menu + AI advisor on the right, history charts and the science underneath. */
+:root {
+  --bg: #eef1ec;
+  --panel: #ffffff;
+  --ink: #17201a;
+  --muted: #5e6b62;
+  --line: #d4dcd5;
+  --accent: #1f8a4c;
+  --accent-soft: #dcefe2;
+  --warn: #c2410c;
+  --warn-soft: #fbe5d8;
+  --sky: #2563a8;
+  --gold: #d99a0b;
+  --f-display: "Sora", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1411; --panel: #171f1a; --ink: #e6eee8; --muted: #9aa99f; --line: #2b3830;
+  --accent: #4cc27c; --accent-soft: #1b3424; --warn: #fb8b4b; --warn-soft: #3b2216; --sky: #6aa7ec; --gold: #f2bd3c; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1411; --panel: #171f1a; --ink: #e6eee8; --muted: #9aa99f; --line: #2b3830;
+  --accent: #4cc27c; --accent-soft: #1b3424; --warn: #fb8b4b; --warn-soft: #3b2216; --sky: #6aa7ec; --gold: #f2bd3c; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 5vw, 48px); font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+h2 { font-size: 18px; font-weight: 800; }
+h3 { font-size: 15px; font-weight: 600; }
+p { margin: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 32px; align-items: end; }
+header .lede { color: var(--muted); max-width: 64ch; margin-top: 8px; font-size: 16px; }
+header .lede b { color: var(--ink); }
+.byline { text-align: right; font-size: 13px; color: var(--muted); }
+.byline b { display: block; color: var(--ink); font-size: 15px; }
+
+.game { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 16px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.mapwrap { padding: 10px; gap: 10px; }
+.mapbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.clock { font-family: var(--f-mono); font-weight: 600; font-size: 15px; }
+.speed { display: flex; gap: 6px; }
+.canvas-holder { position: relative; width: 100%; max-width: 100%; border-radius: 6px; overflow: hidden; touch-action: manipulation; }
+#map { display: block; width: 100%; height: auto; cursor: crosshair; }
+.toast { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 14px; pointer-events: none; opacity: 0; transition: opacity 0.25s; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; }
+.toast.show { opacity: 0.94; }
+.win { position: absolute; inset: auto 12px 12px 12px; background: var(--accent); color: #fff; border-radius: 8px; padding: 12px 16px; font-weight: 700; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+button { font: inherit; font-weight: 700; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 7px 12px; cursor: pointer; }
+button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+.hud { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--bg); border-radius: 8px; padding: 9px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stat .lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
+.stat .num { font-family: var(--f-mono); font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.stat .num.neg { color: var(--warn); }
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); width: 0%; transition: width 0.4s; }
+.meter.warn > i { background: var(--warn); }
+
+.tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.tool { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 7px 10px; font-weight: 600; }
+.tool canvas { width: 34px; height: 34px; border-radius: 6px; }
+.tool .tname { font-weight: 800; font-size: 14px; display: block; }
+.tool .tdesc { font-size: 12px; color: var(--muted); font-weight: 600; display: block; line-height: 1.3; }
+.tool .cost { font-family: var(--f-mono); font-size: 13px; }
+.tool.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.tool.on .tdesc { color: var(--ink); }
+
+.advisor { border: 1px solid var(--accent); background: var(--accent-soft); }
+.advisor .say { font-size: 14px; }
+.advisor .say b { font-weight: 800; }
+.advisor .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.info { font-size: 14px; }
+.info .kv { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed var(--line); padding: 3px 0; }
+.info .kv span:last-child { font-family: var(--f-mono); }
+
+.lower { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.chart { width: 100%; max-width: 100%; aspect-ratio: 16 / 7; position: relative; }
+.chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+.science { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.science .panel p { color: var(--muted); font-size: 14px; }
+.tablebox { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+td, th { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 700; }
+td.n { font-family: var(--f-mono); white-space: nowrap; }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+
+@media (max-width: 960px) {
+  .game, .lower, .science { grid-template-columns: minmax(0, 1fr); }
+  header { grid-template-columns: minmax(0, 1fr); }
+  .byline { text-align: left; }
+  .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) { .tools { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .meter > i, .toast { transition: none; } }
+</style>
+</head>
+<body style="margin:0">
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">City simulation · bioeconomy · AI planning</div>
+      <h1>Bioville</h1>
+      <p class="lede">Your city runs on a coal plant and dumps its food waste in a landfill. Turn its waste into energy: build biogas digesters, biomass power plants, biofuel refineries and elephant grass farms. <b>Goal: shut down the coal plant and run every bus on biofuel.</b></p>
+    </div>
+    <div class="byline"><b>Falak Anand</b>Honours Computer Engineering, University of Waterloo<br>Inspired by the University of Bath International Summer School, Chemical Engineering (2025)</div>
+  </header>
+
+  <section class="game">
+    <div class="panel mapwrap">
+      <div class="mapbar">
+        <span class="clock" id="clock">Year 1 · Jan</span>
+        <div class="speed" role="group" aria-label="Simulation speed">
+          <button id="pauseBtn">Pause</button>
+          <button id="s1" class="on">1×</button>
+          <button id="s3">3×</button>
+          <button id="resetBtn">New city</button>
+        </div>
+      </div>
+      <div class="canvas-holder">
+        <canvas id="map" aria-label="City map. Pick a building, then click an empty grass tile to build."></canvas>
+        <div class="toast" id="toast"></div>
+        <div class="win" id="win" hidden><span>🎉 Coal plant shut down and every bus runs on biofuel. Bioville did it in <span id="winTime"></span>.</span><button id="keepBtn">Keep playing</button></div>
+      </div>
+      <div class="legend">
+        <span><span class="sw" style="background:#f08a24"></span>Food waste truck</span>
+        <span><span class="sw" style="background:#c9a227"></span>Farm waste truck</span>
+        <span>Dashed ring: area a plant collects from</span>
+        <span>Click a building to inspect it</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <div class="panel">
+        <div class="hud">
+          <div class="stat"><span class="lbl">Budget</span><span class="num" id="money">–</span><span class="lbl" id="net">–</span></div>
+          <div class="stat"><span class="lbl">CO₂ this month</span><span class="num" id="co2">–</span><span class="lbl" id="co2d">–</span></div>
+          <div class="stat"><span class="lbl">Clean electricity</span><span class="num" id="cleanE">–</span><div class="meter"><i id="cleanEbar"></i></div></div>
+          <div class="stat"><span class="lbl">Buses on biofuel</span><span class="num" id="cleanT">–</span><div class="meter"><i id="cleanTbar"></i></div></div>
+          <div class="stat"><span class="lbl">Food waste to landfill</span><span class="num" id="landfill">–</span><div class="meter warn"><i id="landBar"></i></div></div>
+          <div class="stat"><span class="lbl">Population</span><span class="num" id="pop">–</span><span class="lbl" id="demand">–</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Build</h2>
+        <div class="tools" id="tools"></div>
+      </div>
+
+      <div class="panel advisor">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2>AI advisor</h2><span class="eyebrow" id="advStat"></span></div>
+        <p class="say" id="advSay">Thinking…</p>
+        <div class="row"><button id="advShow">Show me</button><button id="advBuild" class="primary">Build it</button></div>
+      </div>
+
+      <div class="panel info" id="infoPanel" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 id="infoTitle"></h2><button id="infoClose" aria-label="Close">✕</button></div>
+        <div id="infoBody"></div>
+        <button id="demolish" hidden>Demolish (50% refund)</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="lower">
+    <div class="panel">
+      <h2>CO₂ per month</h2>
+      <div class="legend"><span><span class="sw" style="background:#4b5563"></span>Coal power</span><span><span class="sw" style="background:#2563a8"></span>Diesel buses</span><span><span class="sw" style="background:#a16207"></span>Landfill methane</span><span><span class="sw" style="background:#1f8a4c"></span>Bio plants (life-cycle)</span></div>
+      <div class="chart"><canvas id="co2Chart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>How clean is Bioville?</h2>
+      <div class="legend"><span><span class="sw" style="background:#1f8a4c"></span>Clean electricity %</span><span><span class="sw" style="background:#2563a8"></span>Buses on biofuel %</span></div>
+      <div class="chart"><canvas id="cleanChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="science">
+    <div class="panel">
+      <h3>The science</h3>
+      <p>Each plant turns a waste stream into something useful, using typical real-world yields.</p>
+      <div class="tablebox"><table>
+        <tr><th>Process</th><th>Yield per tonne</th></tr>
+        <tr><td>Anaerobic digestion (food waste → biogas)</td><td class="n">≈250 kWh</td></tr>
+        <tr><td>Biomass combustion (dry crop waste)</td><td class="n">≈900 kWh</td></tr>
+        <tr><td>Cellulosic ethanol (crop waste)</td><td class="n">≈280 L</td></tr>
+        <tr><td>Elephant grass farm (per tile)</td><td class="n">4 t/day</td></tr>
+      </table></div>
+    </div>
+    <div class="panel">
+      <h3>The software</h3>
+      <p><b>Waste routing:</b> every source–plant pair in range is sorted by distance, then waste is assigned greedily to the nearest plant with spare capacity, so plants compete for the same farms like real ones do.</p>
+      <p><b>AI advisor:</b> a search-based planner. It simulates a month for every building type on every empty tile (hundreds of what-if cities), scores each by CO₂ cut plus money saved per dollar spent, and recommends the best.</p>
+    </div>
+    <div class="panel">
+      <h3>The emissions model</h3>
+      <div class="tablebox"><table>
+        <tr><th>Source</th><th>CO₂e</th></tr>
+        <tr><td>Coal electricity (IPCC median)</td><td class="n">820 g/kWh</td></tr>
+        <tr><td>Biomass electricity (IPCC median)</td><td class="n">230 g/kWh</td></tr>
+        <tr><td>Diesel burned</td><td class="n">2.68 kg/L</td></tr>
+        <tr><td>Food waste in landfill</td><td class="n">≈0.5 t/t</td></tr>
+        <tr><td>Ethanol (life-cycle)</td><td class="n">≈0.8 kg/L</td></tr>
+      </table></div>
+      <p>1 L of diesel ≈ 1.7 L of ethanol by energy content.</p>
+    </div>
+  </section>
+
+  <footer>Built by Falak Anand. Bioeconomy and waste-to-energy concepts from the University of Bath International Summer School, Chemical Engineering stream (online, 2025). Elephant grass farms reference my E-Grass System project (GIC, 3rd place). Figures are typical published values, simplified for a game.</footer>
+</div>
+
+<script>
+(function () {
+"use strict";
+const $ = id => document.getElementById(id);
+const W = 20, H = 13;
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// ---------- Tile types ----------
+const GRASS = "grass", ROAD = "road", HOUSE = "house", MARKET = "market", FARM = "farm", COAL = "coal", LANDFILL = "landfill", LAKE = "lake";
+const BUILD = {
+  digester: { name: "Biogas digester", desc: "Food waste → biogas → electricity", cost: 300, upkeep: 8, cap: 6, accepts: "food", radius: 4 },
+  compost:  { name: "Compost site",   desc: "Food waste → fertilizer. Cheap.",  cost: 80,  upkeep: 2, cap: 2.5, accepts: "food", radius: 3 },
+  biomass:  { name: "Biomass power plant", desc: "Farm waste → electricity",    cost: 900, upkeep: 25, cap: 40, accepts: "residue", radius: 5 },
+  refinery: { name: "Biofuel refinery", desc: "Farm waste → ethanol for buses", cost: 800, upkeep: 20, cap: 25, accepts: "residue", radius: 5 },
+  egrass:   { name: "Elephant grass farm", desc: "Grows 4 t/day of fuel crop",  cost: 60,  upkeep: 3, source: 4 }
+};
+const ORDER = ["digester", "biomass", "refinery", "egrass", "compost"];
+
+// ---------- World ----------
+let grid, money, month, g, history, won, keepPlaying;
+function newCity() {
+  grid = [];
+  for (let y = 0; y < H; y++) { const row = []; for (let x = 0; x < W; x++) row.push({ t: GRASS, v: (x * 7 + y * 13) % 5 }); grid.push(row); }
+  const set = (x, y, t) => { if (x >= 0 && y >= 0 && x < W && y < H) grid[y][x].t = t; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (y === 4 || y === 9 || x === 6 || x === 13) set(x, y, ROAD);
+    else if (x >= 7 && x <= 12) set(x, y, HOUSE);
+    else if (x >= 14 && x <= 16 && y <= 3) set(x, y, HOUSE);
+    else if (x <= 4 && y <= 3) set(x, y, FARM);
+    else if (x >= 15 && y >= 10) set(x, y, FARM);
+  }
+  [[9, 5], [11, 2], [8, 10]].forEach(([x, y]) => set(x, y, MARKET));
+  set(18, 1, COAL);
+  set(1, 11, LANDFILL); set(2, 11, LANDFILL);
+  [[16, 6], [17, 6], [16, 7], [17, 7], [18, 7]].forEach(([x, y]) => set(x, y, LAKE));
+  money = 2500; month = 0; g = 1; history = []; won = false; keepPlaying = false;
+  $("win").hidden = true;
+  invalidate();
+}
+
+// ---------- Simulation (pure) ----------
+function simulate(gr, gf) {
+  const sources = [], plants = [];
+  let houses = 0, markets = 0, upkeep = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = gr[y][x].t;
+    if (t === HOUSE) { houses++; sources.push({ x, y, k: "food", a: 0.04 * gf }); }
+    else if (t === MARKET) { markets++; sources.push({ x, y, k: "food", a: 1.2 * gf }); }
+    else if (t === FARM) sources.push({ x, y, k: "residue", a: 1.6 });
+    else if (t === "egrass") { sources.push({ x, y, k: "residue", a: BUILD.egrass.source }); upkeep += BUILD.egrass.upkeep; }
+    else if (BUILD[t]) { plants.push({ x, y, t, cap: BUILD[t].cap, left: BUILD[t].cap, got: 0 }); upkeep += BUILD[t].upkeep; }
+  }
+  const pairs = [];
+  sources.forEach((s, si) => plants.forEach((p, pi) => {
+    const b = BUILD[p.t]; if (b.accepts !== s.k) return;
+    const d = Math.abs(s.x - p.x) + Math.abs(s.y - p.y);
+    if (d <= b.radius) pairs.push({ si, pi, d });
+  }));
+  pairs.sort((a, b) => a.d - b.d || a.pi - b.pi);
+  const rem = sources.map(s => s.a), flows = [];
+  for (const pr of pairs) {
+    const p = plants[pr.pi], q = Math.min(rem[pr.si], p.left);
+    if (q > 1e-9) { rem[pr.si] -= q; p.left -= q; p.got += q; flows.push({ s: sources[pr.si], p, q, k: sources[pr.si].k }); }
+  }
+  let foodDig = 0, foodComp = 0, resBio = 0, resRef = 0;
+  plants.forEach(p => { if (p.t === "digester") foodDig += p.got; if (p.t === "compost") foodComp += p.got; if (p.t === "biomass") resBio += p.got; if (p.t === "refinery") resRef += p.got; });
+  const foodTotal = sources.filter(s => s.k === "food").reduce((a, s) => a + s.a, 0);
+  const landfill = Math.max(0, foodTotal - foodDig - foodComp);
+  const demand = houses * 1.2 * gf + markets * 2 * gf;             // MWh/day
+  const bio = resBio * 0.9 + foodDig * 0.25;                        // MWh/day
+  const coal = Math.max(0, demand - bio), surplus = Math.max(0, bio - demand);
+  const ethanol = resRef * 280;                                      // L/day
+  const dieselNeed = 3000 * gf;
+  const replaced = Math.min(dieselNeed, ethanol / 1.7);
+  const ethUsed = replaced * 1.7, ethSurplus = Math.max(0, ethanol - ethUsed);
+  const diesel = dieselNeed - replaced;
+  const co2 = { coal: coal * 0.82 * 30, diesel: diesel * 2.68 / 1000 * 30, landfill: landfill * 0.5 * 30, bio: (bio * 0.23 + ethanol * 0.8 / 1000) * 30 };
+  const co2m = co2.coal + co2.diesel + co2.landfill + co2.bio;
+  const income = 360 * gf;
+  const net = income - coal * 0.06 * 30 - diesel * 1.2 / 1000 * 30 + surplus * 0.05 * 30 + ethSurplus * 0.5 / 1000 * 30
+    + foodDig * 0.02 * 30 + foodComp * 0.015 * 30 - upkeep;
+  return { flows, plants, demand, bio, coal, surplus, ethanol, dieselNeed, replaced, diesel, landfill, foodTotal, co2, co2m, net,
+    cleanE: demand ? Math.min(1, bio / demand) : 1, cleanT: replaced / dieselNeed, houses };
+}
+
+let cur = null;
+function invalidate() { cur = simulate(grid, g); staticDirty = true; rebuildTrucks(); updateHUD(); scheduleAdvisor(); }
+
+// ---------- Monthly tick ----------
+function tick() {
+  const r = simulate(grid, g);
+  money += r.net; month++;
+  history.push({ co2: r.co2, cleanE: r.cleanE, cleanT: r.cleanT });
+  if (history.length > 120) history.shift();
+  g *= 1.004;
+  cur = simulate(grid, g);
+  if (!won && cur.coal <= 1e-6 && cur.diesel <= 1e-6) { won = true; $("winTime").textContent = timeLabel(month); $("win").hidden = false; }
+  staticDirty = true; updateHUD(); drawCharts(); scheduleAdvisor();
+  if (month % 3 === 0) rebuildTrucks();
+}
+const timeLabel = m => { const y = Math.floor(m / 12), mm = m % 12; return (y ? y + " yr " : "") + mm + " mo"; };
+
+// ---------- HUD ----------
+const fmtK = v => (v < 0 ? "−$" : "$") + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(2) + "M" : Math.round(Math.abs(v)) + "k");
+const fmtN = (v, d = 0) => v.toLocaleString("en-CA", { maximumFractionDigits: d, minimumFractionDigits: d });
+function updateHUD() {
+  const r = cur;
+  $("clock").textContent = "Year " + (Math.floor(month / 12) + 1) + " · " + MONTHS[month % 12];
+  $("money").textContent = fmtK(money); $("money").classList.toggle("neg", money < 0);
+  $("net").textContent = (r.net >= 0 ? "+" : "−") + fmtK(Math.abs(r.net)).replace("−", "") + " per month";
+  $("co2").textContent = fmtN(r.co2m) + " t";
+  const start = history.length ? null : null;
+  $("co2d").textContent = "coal " + fmtN(r.co2.coal) + " · buses " + fmtN(r.co2.diesel) + " · landfill " + fmtN(r.co2.landfill);
+  $("cleanE").textContent = Math.round(r.cleanE * 100) + "%"; $("cleanEbar").style.width = r.cleanE * 100 + "%";
+  $("cleanT").textContent = Math.round(r.cleanT * 100) + "%"; $("cleanTbar").style.width = r.cleanT * 100 + "%";
+  const lf = r.foodTotal ? r.landfill / r.foodTotal : 0;
+  $("landfill").textContent = fmtN(r.landfill, 1) + " t/day"; $("landBar").style.width = lf * 100 + "%";
+  $("pop").textContent = fmtN(r.houses * 100 * g);
+  $("demand").textContent = "needs " + fmtN(r.demand) + " MWh/day";
+  document.querySelectorAll(".tool").forEach(b => { const k = b.dataset.k; if (BUILD[k]) b.disabled = money < BUILD[k].cost; });
+  if (selected) showInfo(selected.x, selected.y);
+}
+
+// ---------- Rendering ----------
+const map = $("map"), ctx = map.getContext("2d");
+const off = document.createElement("canvas"), octx = off.getContext("2d");
+let S = 40, staticDirty = true, dpr = 1;
+const C = {
+  grass: ["#8fc46a", "#86bd62", "#93c86f", "#8ac266", "#90c56b"], road: "#5b6168", roadLine: "#e8e2c8", lake: "#4f9bd8", lakeHi: "#7fb9e6",
+  roofs: ["#c0533a", "#3f6fb0", "#7a4fa3", "#d08a2e", "#2f8f83"], wall: "#f4efe4", window: "#ffd75e", windowOff: "#9aa3ad",
+  soil: "#a8794a", crop: "#e2c25a", coal: "#3d4248", smoke: "#6b7178", trash: "#8a6a3c", green: "#2f8f4e", tank: "#5fae73", steel: "#b9c2ca"
+};
+function resize() {
+  const holder = map.parentElement, w = holder.clientWidth;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  S = w / W;
+  map.width = Math.round(w * dpr); map.height = Math.round(S * H * dpr);
+  map.style.height = S * H + "px";
+  off.width = map.width; off.height = map.height;
+  staticDirty = true;
+}
+function tileAt(x, y) { return grid[y] && grid[y][x]; }
+function drawTile(c, x, y, t, s, o) {
+  const px = x * s, py = y * s;
+  c.save(); c.translate(px, py);
+  const R = (a, b, w, h, col) => { c.fillStyle = col; c.fillRect(a * s, b * s, w * s, h * s); };
+  const grassBg = () => R(0, 0, 1, 1, C.grass[(o && o.v) || 0]);
+  switch (t) {
+    case GRASS: grassBg(); c.fillStyle = "rgba(255,255,255,0.12)"; for (let i = 0; i < 3; i++) c.fillRect(((o.v * 3 + i * 7) % 9) / 10 * s, ((o.v * 5 + i * 3) % 9) / 10 * s, s * 0.06, s * 0.06); break;
+    case ROAD: {
+      R(0, 0, 1, 1, C.road);
+      const h = tileAt(x - 1, y) && tileAt(x - 1, y).t === ROAD || tileAt(x + 1, y) && tileAt(x + 1, y).t === ROAD;
+      const v = tileAt(x, y - 1) && tileAt(x, y - 1).t === ROAD || tileAt(x, y + 1) && tileAt(x, y + 1).t === ROAD;
+      c.fillStyle = C.roadLine;
+      if (h && !v) for (let i = 0; i < 2; i++) c.fillRect((0.1 + i * 0.5) * s, 0.47 * s, 0.3 * s, 0.06 * s);
+      else if (v && !h) for (let i = 0; i < 2; i++) c.fillRect(0.47 * s, (0.1 + i * 0.5) * s, 0.06 * s, 0.3 * s);
+      break; }
+    case HOUSE: {
+      grassBg();
+      const roof = C.roofs[(x * 3 + y * 5) % C.roofs.length];
+      R(0.18, 0.42, 0.64, 0.46, C.wall);
+      c.fillStyle = roof; c.beginPath(); c.moveTo(0.1 * s, 0.46 * s); c.lineTo(0.5 * s, 0.14 * s); c.lineTo(0.9 * s, 0.46 * s); c.closePath(); c.fill();
+      const lit = o && o.lit; R(0.28, 0.54, 0.16, 0.14, lit ? C.window : C.windowOff); R(0.56, 0.54, 0.16, 0.14, lit ? C.window : C.windowOff);
+      R(0.44, 0.7, 0.12, 0.18, "#7a5a3a"); break; }
+    case MARKET: {
+      grassBg(); R(0.1, 0.38, 0.8, 0.5, C.wall);
+      for (let i = 0; i < 5; i++) R(0.1 + i * 0.16, 0.26, 0.16, 0.16, i % 2 ? "#ffffff" : "#e0533d");
+      R(0.22, 0.56, 0.56, 0.32, "#8bb7d6"); c.fillStyle = "#3a3a3a"; c.font = `700 ${s * 0.18}px sans-serif`; c.textAlign = "center"; c.fillText("MKT", 0.5 * s, 0.77 * s); break; }
+    case FARM: {
+      R(0, 0, 1, 1, C.soil);
+      for (let i = 0; i < 5; i++) R(0.04, 0.06 + i * 0.19, 0.92, 0.1, C.crop); break; }
+    case COAL: {
+      grassBg(); const closed = o && o.closed;
+      R(0.08, 0.45, 0.62, 0.45, closed ? "#8b9096" : C.coal);
+      R(0.68, 0.12, 0.18, 0.78, closed ? "#9aa0a6" : "#555b62"); R(0.68, 0.12, 0.18, 0.06, "#c0533a");
+      if (closed) { c.strokeStyle = "#c0533a"; c.lineWidth = s * 0.08; c.beginPath(); c.moveTo(0.15 * s, 0.5 * s); c.lineTo(0.62 * s, 0.85 * s); c.moveTo(0.62 * s, 0.5 * s); c.lineTo(0.15 * s, 0.85 * s); c.stroke(); }
+      else { R(0.16, 0.56, 0.12, 0.1, "#ffb347"); R(0.38, 0.56, 0.12, 0.1, "#ffb347"); }
+      break; }
+    case LANDFILL: {
+      grassBg(); c.fillStyle = C.trash; c.beginPath(); c.ellipse(0.5 * s, 0.68 * s, 0.46 * s, 0.3 * s, 0, Math.PI, 0); c.fill();
+      const cols = ["#d9d9d9", "#e06b3d", "#4a7bd0", "#e8c547"];
+      for (let i = 0; i < 7; i++) { c.fillStyle = cols[i % 4]; c.fillRect((0.18 + (i * 0.11) % 0.62) * s, (0.46 + (i % 3) * 0.06) * s, s * 0.08, s * 0.06); }
+      break; }
+    case LAKE: R(0, 0, 1, 1, C.lake); c.fillStyle = C.lakeHi; c.fillRect(0.15 * s, 0.3 * s, 0.3 * s, 0.05 * s); c.fillRect(0.55 * s, 0.65 * s, 0.25 * s, 0.05 * s); break;
+    case "digester": {
+      grassBg(); R(0.08, 0.72, 0.84, 0.16, "#7c8790");
+      c.fillStyle = C.tank; c.beginPath(); c.ellipse(0.5 * s, 0.72 * s, 0.38 * s, 0.42 * s, 0, Math.PI, 0); c.fill();
+      c.fillStyle = "rgba(255,255,255,0.35)"; c.beginPath(); c.ellipse(0.38 * s, 0.5 * s, 0.08 * s, 0.12 * s, -0.5, 0, Math.PI * 2); c.fill();
+      R(0.78, 0.2, 0.06, 0.22, "#5d6670"); c.fillStyle = "#ffb020"; c.beginPath(); c.arc(0.81 * s, 0.17 * s, s * 0.06, 0, Math.PI * 2); c.fill(); break; }
+    case "compost": {
+      grassBg(); c.strokeStyle = "#5c7d3a"; c.lineWidth = s * 0.05; c.strokeRect(0.08 * s, 0.2 * s, 0.84 * s, 0.7 * s);
+      c.fillStyle = "#6d4c2f"; [[0.3, 0.75], [0.7, 0.75], [0.5, 0.5]].forEach(([a, b]) => { c.beginPath(); c.ellipse(a * s, b * s, 0.18 * s, 0.13 * s, 0, Math.PI, 0); c.fill(); });
+      break; }
+    case "biomass": {
+      grassBg(); R(0.08, 0.42, 0.6, 0.48, "#e9eef0"); R(0.08, 0.42, 0.6, 0.08, C.green);
+      R(0.7, 0.14, 0.16, 0.76, "#cfd6db");
+      c.fillStyle = C.green; c.beginPath(); c.ellipse(0.38 * s, 0.68 * s, 0.13 * s, 0.08 * s, -0.6, 0, Math.PI * 2); c.fill(); break; }
+    case "refinery": {
+      grassBg(); c.fillStyle = C.steel;
+      [[0.28, 0.62], [0.62, 0.66]].forEach(([a, b]) => { c.beginPath(); c.ellipse(a * s, b * s, 0.18 * s, 0.24 * s, 0, 0, Math.PI * 2); c.fill(); });
+      R(0.8, 0.1, 0.1, 0.78, "#8d99a4"); R(0.16, 0.56, 0.24, 0.05, "#2f8f4e"); R(0.5, 0.6, 0.24, 0.05, "#2f8f4e");
+      c.fillStyle = "#2a3138"; c.font = `800 ${s * 0.16}px sans-serif`; c.textAlign = "center"; c.fillText("E85", 0.45 * s, 0.25 * s); break; }
+    case "egrass": {
+      R(0, 0, 1, 1, "#6f9a3c");
+      c.strokeStyle = "#2f6b23"; c.lineWidth = s * 0.045;
+      for (let i = 0; i < 7; i++) { const bx = (0.1 + i * 0.13) * s; c.beginPath(); c.moveTo(bx, 0.92 * s); c.quadraticCurveTo(bx + 0.05 * s, 0.4 * s, bx + (i % 2 ? 0.1 : -0.06) * s, 0.12 * s); c.stroke(); }
+      break; }
+  }
+  c.restore();
+}
+function drawStatic() {
+  octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  octx.clearRect(0, 0, W * S, H * S);
+  const closed = cur && cur.coal <= 1e-6, litRatio = cur ? cur.cleanE : 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cell = grid[y][x];
+    const lit = ((x * 7 + y * 11) % 10) / 10 < 0.35 + litRatio * 0.65;
+    drawTile(octx, x, y, cell.t, S, { v: cell.v, lit, closed });
+  }
+  staticDirty = false;
+}
+
+// ---------- Trucks & particles ----------
+let trucks = [], smoke = [];
+function rebuildTrucks() {
+  trucks = [];
+  if (!cur) return;
+  const flows = cur.flows.filter(f => f.q > 0.05).sort((a, b) => b.q - a.q).slice(0, 60);
+  flows.forEach((f, i) => {
+    const n = Math.min(3, Math.max(1, Math.round(f.q / 4)));
+    for (let k = 0; k < n; k++) trucks.push({ f, t: Math.random(), sp: 0.12 + Math.random() * 0.08 });
+  });
+}
+function truckPos(f, t) {
+  const sx = f.s.x + 0.5, sy = f.s.y + 0.5, px = f.p.x + 0.5, py = f.p.y + 0.5;
+  const dx = Math.abs(px - sx), dy = Math.abs(py - sy), L = dx + dy || 1;
+  const d = t * L;
+  if (d <= dx) return [sx + Math.sign(px - sx) * d, sy];
+  return [px, sy + Math.sign(py - sy) * (d - dx)];
+}
+
+// ---------- Interaction ----------
+let tool = null, hover = null, selected = null, advice = null, flash = null;
+function canBuildAt(x, y, k) { const c = tileAt(x, y); return c && c.t === GRASS && BUILD[k]; }
+function build(x, y, k) {
+  const b = BUILD[k];
+  if (!canBuildAt(x, y, k)) { toast("Build on an empty grass tile"); return false; }
+  if (money < b.cost) { toast("Not enough money yet"); return false; }
+  money -= b.cost; grid[y][x].t = k; invalidate(); toast(b.name + " built");
+  return true;
+}
+function evToTile(e) {
+  const r = map.getBoundingClientRect();
+  return { x: Math.floor((e.clientX - r.left) / (r.width / W)), y: Math.floor((e.clientY - r.top) / (r.height / H)) };
+}
+map.addEventListener("pointermove", e => { hover = evToTile(e); });
+map.addEventListener("pointerleave", () => { hover = null; });
+map.addEventListener("click", e => {
+  const { x, y } = evToTile(e); const c = tileAt(x, y); if (!c) return;
+  if (tool) { build(x, y, tool); return; }
+  if (c.t !== GRASS && c.t !== ROAD) { selected = { x, y }; showInfo(x, y); } else { selected = null; $("infoPanel").hidden = true; }
+});
+function showInfo(x, y) {
+  const c = tileAt(x, y), panel = $("infoPanel"), body = $("infoBody"); if (!c) return;
+  const names = { house: "Homes", market: "Market", farm: "Farm", coal: "Coal power plant", landfill: "Landfill", lake: "Lake" };
+  const b = BUILD[c.t];
+  $("infoTitle").textContent = b ? b.name : names[c.t] || c.t;
+  const rows = [];
+  if (c.t === HOUSE) rows.push(["Residents", fmtN(100 * g)], ["Electricity", fmtN(1.2 * g, 1) + " MWh/day"], ["Food waste", fmtN(40 * g) + " kg/day"]);
+  if (c.t === MARKET) rows.push(["Food waste", fmtN(1.2 * g, 1) + " t/day"], ["Electricity", fmtN(2 * g, 1) + " MWh/day"]);
+  if (c.t === FARM) rows.push(["Crop waste", "1.6 t/day"]);
+  if (c.t === COAL) rows.push(["Output now", fmtN(cur.coal, 1) + " MWh/day"], ["CO₂", fmtN(cur.co2.coal) + " t/month"], ["Status", cur.coal <= 1e-6 ? "Shut down" : "Running"]);
+  if (c.t === LANDFILL) rows.push(["Food waste in", fmtN(cur.landfill, 1) + " t/day"], ["Methane (CO₂e)", fmtN(cur.co2.landfill) + " t/month"]);
+  if (b && c.t !== "egrass") {
+    const p = cur.plants.find(p => p.x === x && p.y === y);
+    const got = p ? p.got : 0;
+    rows.push(["Collects", fmtN(got, 1) + " / " + b.cap + " t/day"], ["Range", b.radius + " tiles"], ["Upkeep", "$" + b.upkeep + "k/month"]);
+    if (c.t === "digester") rows.push(["Electricity", fmtN(got * 0.25, 2) + " MWh/day"]);
+    if (c.t === "biomass") rows.push(["Electricity", fmtN(got * 0.9, 1) + " MWh/day"]);
+    if (c.t === "refinery") rows.push(["Ethanol", fmtN(got * 280) + " L/day"]);
+    if (got < b.cap * 0.5) rows.push(["Tip", "Short on waste. Build closer to sources."]);
+  }
+  if (c.t === "egrass") { const used = cur.flows.filter(f => f.s.x === x && f.s.y === y).reduce((a, f) => a + f.q, 0); rows.push(["Grows", "4 t/day"], ["Used by plants", fmtN(used, 1) + " t/day"]); if (used < 0.1) rows.push(["Tip", "No plant in range. Build a biomass plant or refinery nearby."]); }
+  body.innerHTML = rows.map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join("");
+  $("demolish").hidden = !b;
+  panel.hidden = false;
+}
+$("infoClose").addEventListener("click", () => { selected = null; $("infoPanel").hidden = true; });
+$("demolish").addEventListener("click", () => {
+  if (!selected) return; const c = tileAt(selected.x, selected.y), b = BUILD[c.t]; if (!b) return;
+  money += b.cost * 0.5; c.t = GRASS; selected = null; $("infoPanel").hidden = true; invalidate(); toast("Demolished");
+});
+
+// Tool buttons with mini icons
+(function makeTools() {
+  const box = $("tools");
+  ORDER.forEach(k => {
+    const b = BUILD[k], btn = document.createElement("button");
+    btn.className = "tool"; btn.dataset.k = k;
+    const ic = document.createElement("canvas"); ic.width = 68; ic.height = 68;
+    const ictx = ic.getContext("2d"); ictx.scale(2, 2); drawTile(ictx, 0, 0, k, 34, { v: 0 });
+    const txt = document.createElement("span"); txt.innerHTML = `<span class="tname">${b.name}</span><span class="tdesc">${b.desc}</span>`;
+    const cost = document.createElement("span"); cost.className = "cost"; cost.textContent = "$" + b.cost + "k";
+    btn.append(ic, txt, cost);
+    btn.addEventListener("click", () => { tool = tool === k ? null : k; document.querySelectorAll(".tool").forEach(t => t.classList.toggle("on", t.dataset.k === tool)); if (tool) toast("Click an empty grass tile to build"); });
+    box.appendChild(btn);
+  });
+})();
+
+// ---------- AI advisor (search-based planner) ----------
+let advTimer = null;
+function scheduleAdvisor() { clearTimeout(advTimer); advTimer = setTimeout(runAdvisor, 120); }
+function runAdvisor() {
+  const base = simulate(grid, g);
+  let best = null, tested = 0;
+  for (const k of ORDER) {
+    const b = BUILD[k]; if (money < b.cost) continue;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (grid[y][x].t !== GRASS) continue;
+      grid[y][x].t = k; const r = simulate(grid, g); grid[y][x].t = GRASS; tested++;
+      const cut = base.co2m - r.co2m, dm = r.net - base.net;
+      const value = cut + 2 * dm;
+      if (cut <= 0.5 && dm <= 0) continue;
+      const score = value / b.cost;
+      if (!best || score > best.score) best = { x, y, k, cut, dm, score };
+    }
+  }
+  advice = best;
+  $("advStat").textContent = tested ? fmtN(tested) + " futures tested" : "";
+  const say = $("advSay");
+  if (won && !keepPlaying) { say.innerHTML = "You did it. Keep playing to cut CO₂ even further."; }
+  if (!best) {
+    const cheapest = Math.min(...ORDER.map(k => BUILD[k].cost));
+    say.innerHTML = money < cheapest ? "Save up a little. Every option costs more than your budget right now." : "Nothing left that clearly helps. Try demolishing a badly placed plant, or let the city grow.";
+    $("advShow").disabled = $("advBuild").disabled = true; return;
+  }
+  const b = BUILD[best.k];
+  const pay = best.dm > 0 ? " Pays for itself in about <b>" + Math.ceil(b.cost / best.dm) + " months</b>." : best.dm < 0 ? " Costs " + fmtK(-best.dm) + " a month to run, but it's the biggest climate win." : "";
+  say.innerHTML = `Build a <b>${b.name}</b> at tile (${best.x + 1}, ${best.y + 1}). It cuts <b>${fmtN(best.cut)} t of CO₂ a month</b>` + (best.dm > 0 ? ` and saves <b>${fmtK(best.dm)}/month</b>.` : ".") + pay;
+  $("advShow").disabled = $("advBuild").disabled = false;
+}
+$("advShow").addEventListener("click", () => { if (advice) flash = { x: advice.x, y: advice.y, k: advice.k, t: 2.2 }; });
+$("advBuild").addEventListener("click", () => { if (advice) build(advice.x, advice.y, advice.k); });
+
+// ---------- Charts ----------
+function fitC(c) {
+  const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  c.width = Math.max(1, Math.round(r.width * d)); c.height = Math.max(1, Math.round(r.height * d));
+  const x = c.getContext("2d"); x.setTransform(d, 0, 0, d, 0, 0); return { x, w: r.width, h: r.height };
+}
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v || 1))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; }
+function axes(x, w, h, pad, yMax, yFmt) {
+  x.font = "11px " + cssv("--f-mono"); x.fillStyle = cssv("--muted"); x.strokeStyle = cssv("--line"); x.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const v = yMax * i / 4, yy = h - pad.b - (v / yMax) * (h - pad.t - pad.b);
+    x.beginPath(); x.moveTo(pad.l, yy); x.lineTo(w - pad.r, yy); x.stroke(); x.textAlign = "right"; x.fillText(yFmt(v), pad.l - 6, yy + 4); }
+}
+function drawCharts() {
+  { const { x, w, h } = fitC($("co2Chart")); const pad = { l: 52, r: 8, t: 8, b: 22 };
+    const hist = history.length ? history : [{ co2: cur.co2 }];
+    const tot = hist.map(e => e.co2.coal + e.co2.diesel + e.co2.landfill + e.co2.bio);
+    const yMax = niceMax(Math.max(...tot) * 1.05);
+    axes(x, w, h, pad, yMax, v => fmtN(v));
+    const n = Math.max(12, hist.length), bw = (w - pad.l - pad.r) / n;
+    const cols = [["coal", "#4b5563"], ["diesel", "#2563a8"], ["landfill", "#a16207"], ["bio", "#1f8a4c"]];
+    hist.forEach((e, i) => { let acc = 0; cols.forEach(([k, col]) => { const v = e.co2[k]; const y0 = h - pad.b - ((acc + v) / yMax) * (h - pad.t - pad.b); const hh = (v / yMax) * (h - pad.t - pad.b);
+      x.fillStyle = col; x.fillRect(pad.l + i * bw + bw * 0.12, y0, bw * 0.76, hh); acc += v; }); });
+    x.fillStyle = cssv("--muted"); x.textAlign = "left"; x.fillText("t CO₂e / month · last " + hist.length + " months", pad.l, h - 4); }
+  { const { x, w, h } = fitC($("cleanChart")); const pad = { l: 44, r: 8, t: 8, b: 22 };
+    axes(x, w, h, pad, 1, v => Math.round(v * 100) + "%");
+    const hist = history.length ? history : [{ cleanE: cur.cleanE, cleanT: cur.cleanT }];
+    const n = Math.max(12, hist.length), X = i => pad.l + (i + 0.5) * (w - pad.l - pad.r) / n, Y = v => h - pad.b - v * (h - pad.t - pad.b);
+    [["cleanE", "#1f8a4c"], ["cleanT", "#2563a8"]].forEach(([k, col]) => { x.strokeStyle = col; x.lineWidth = 2.5; x.beginPath();
+      hist.forEach((e, i) => i ? x.lineTo(X(i), Y(e[k])) : x.moveTo(X(i), Y(e[k]))); x.stroke();
+      const l = hist[hist.length - 1]; x.fillStyle = col; x.beginPath(); x.arc(X(hist.length - 1), Y(l[k]), 4, 0, Math.PI * 2); x.fill(); });
+    x.fillStyle = cssv("--muted"); x.textAlign = "left"; x.fillText("share by month", pad.l, h - 4); }
+}
+
+// ---------- Frame loop ----------
+let running = true, speed = 1, acc = 0, last = performance.now(), toastT = 0;
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (running) { acc += dt * speed; if (acc >= 2.5) { acc -= 2.5; tick(); } }
+  if (staticDirty) drawStatic();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, map.width, map.height); ctx.drawImage(off, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // smog
+  const smog = cur ? (1 - cur.cleanE) : 1;
+  if (smog > 0.01) { ctx.fillStyle = `rgba(110,105,95,${0.22 * smog})`; ctx.fillRect(0, 0, W * S, H * S); }
+  // coal smoke
+  if (cur && cur.coal > 1e-6) {
+    if (Math.random() < 0.3 * (running ? speed : 0.3)) smoke.push({ x: 18.77 * S, y: 1.12 * S, r: S * 0.12, a: 0.7 });
+  }
+  smoke = smoke.filter(p => p.a > 0.02);
+  smoke.forEach(p => { if (!reduce) { p.x -= S * 0.18 * dt; p.y -= S * 0.5 * dt; p.r += S * 0.15 * dt; p.a -= 0.25 * dt; }
+    ctx.fillStyle = `rgba(80,82,86,${p.a})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); });
+  // trucks
+  trucks.forEach(tr => { if (running && !reduce) { tr.t += tr.sp * dt * speed; if (tr.t > 1) tr.t -= 1; }
+    const [tx, ty] = truckPos(tr.f, tr.t);
+    ctx.fillStyle = tr.f.k === "food" ? "#f08a24" : "#c9a227"; ctx.strokeStyle = "#2a2a2a"; ctx.lineWidth = 1;
+    ctx.fillRect(tx * S - S * 0.11, ty * S - S * 0.08, S * 0.22, S * 0.16); ctx.strokeRect(tx * S - S * 0.11, ty * S - S * 0.08, S * 0.22, S * 0.16); });
+  // ranges of plants (subtle) and hover preview
+  const showRange = (x, y, r, col) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath();
+    const cx = (x + 0.5) * S, cy = (y + 0.5) * S, rr = (r + 0.5) * S;
+    ctx.moveTo(cx, cy - rr); ctx.lineTo(cx + rr, cy); ctx.lineTo(cx, cy + rr); ctx.lineTo(cx - rr, cy); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  };
+  if (selected) { const c = tileAt(selected.x, selected.y); if (c && BUILD[c.t] && BUILD[c.t].radius) showRange(selected.x, selected.y, BUILD[c.t].radius, "#ffffff");
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.strokeRect(selected.x * S + 1.5, selected.y * S + 1.5, S - 3, S - 3); }
+  if (tool && hover && tileAt(hover.x, hover.y)) {
+    const ok = canBuildAt(hover.x, hover.y, tool) && money >= BUILD[tool].cost;
+    ctx.globalAlpha = 0.75; drawTile(ctx, hover.x, hover.y, tool, S, { v: 0 }); ctx.globalAlpha = 1;
+    ctx.strokeStyle = ok ? "#ffffff" : "#ef4444"; ctx.lineWidth = 3; ctx.strokeRect(hover.x * S + 1.5, hover.y * S + 1.5, S - 3, S - 3);
+    if (BUILD[tool].radius) showRange(hover.x, hover.y, BUILD[tool].radius, ok ? "#ffffff" : "#ef4444");
+  }
+  if (flash) { flash.t -= dt; const a = 0.5 + 0.5 * Math.sin(now / 120);
+    ctx.strokeStyle = `rgba(255,214,10,${a})`; ctx.lineWidth = 4; ctx.strokeRect(flash.x * S + 2, flash.y * S + 2, S - 4, S - 4);
+    if (BUILD[flash.k].radius) showRange(flash.x, flash.y, BUILD[flash.k].radius, `rgba(255,214,10,${a})`);
+    if (flash.t <= 0) flash = null; }
+  if (toastT > 0) { toastT -= dt; if (toastT <= 0) $("toast").classList.remove("show"); }
+  requestAnimationFrame(frame);
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); toastT = 2; }
+
+// ---------- Controls ----------
+$("pauseBtn").addEventListener("click", () => { running = !running; $("pauseBtn").textContent = running ? "Pause" : "Play"; $("pauseBtn").classList.toggle("on", !running); });
+$("s1").addEventListener("click", () => { speed = 1; $("s1").classList.add("on"); $("s3").classList.remove("on"); });
+$("s3").addEventListener("click", () => { speed = 3; $("s3").classList.add("on"); $("s1").classList.remove("on"); });
+$("resetBtn").addEventListener("click", () => { selected = null; tool = null; $("infoPanel").hidden = true; document.querySelectorAll(".tool").forEach(t => t.classList.remove("on")); newCity(); drawCharts(); });
+$("keepBtn").addEventListener("click", () => { keepPlaying = true; $("win").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { tool = null; document.querySelectorAll(".tool").forEach(t => t.classList.remove("on")); } });
+
+let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { resize(); drawCharts(); }, 100); });
+const mq = window.matchMedia("(prefers-color-scheme: dark)"); mq.addEventListener && mq.addEventListener("change", drawCharts);
+new MutationObserver(drawCharts).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+resize(); newCity(); drawCharts(); requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
